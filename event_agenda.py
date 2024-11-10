@@ -1,4 +1,3 @@
-import pandas as pd
 from churchtools_api import churchtools_api as cta
 import secure.config as config
 
