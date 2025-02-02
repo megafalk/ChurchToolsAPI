@@ -8,6 +8,6 @@ if __name__ == '__main__':
     if agenda == None:
         print('This event has no agenda')
         exit()
-    agenda_docx = api.get_event_agenda_docx(agenda=agenda,serviceGroups= {} )
+    agenda_docx = api.get_event_agenda_docx2(agenda=agenda,serviceGroups= {} )
     agenda_docx.save('agenda.docx')
     pass

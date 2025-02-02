@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import docx
+from docx.shared import Cm, Pt
+from docx.oxml import OxmlElement, ns
+from docx.oxml.ns import qn
 
 from churchtools_api.churchtools_api_abstract import ChurchToolsApiAbstract
 
@@ -536,6 +539,119 @@ class ChurchToolsApiEvents(ChurchToolsApiAbstract):
                             level=4,
                         )
                         document.add_paragraph(note["note"])
+
+        return document
+
+    def get_event_agenda_docx2(self, agenda, **kwargs):
+        excludeBeforeEvent = kwargs.get("excludeBeforeEvent", False)
+        document = docx.Document()
+
+        # Seitenränder setzen (2 cm)
+        sections = document.sections
+        for section in sections:
+            section.top_margin = Cm(2)
+            section.bottom_margin = Cm(2)
+            section.left_margin = Cm(2)
+            section.right_margin = Cm(2)
+
+        # Standard-Schriftart auf Calibri setzen
+        style = document.styles['Normal']
+        style.font.name = 'Calibri'
+        style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Calibri')
+
+        # Überschrift: Gottesdienst am [Datum]
+        event_date = datetime.strptime(agenda["meta"]["modifiedDate"], "%Y-%m-%dT%H:%M:%S%z")
+        event_date_formatted = event_date.strftime("%d.%m.%Y")
+
+        heading = document.add_paragraph()
+        run = heading.add_run(f"Gottesdienst am {event_date_formatted}")
+        run.bold = True
+        run.font.size = Pt(14)  # 2 Punkt größer
+
+        # Übersicht: Funktionen und zugehörige Personen
+        role_dict = {}
+        for item in agenda["items"]:
+            for responsible_item in item["responsible"]["persons"]:
+                if responsible_item["person"] is not None:
+                    person_name = responsible_item["person"]["title"]
+                    role = responsible_item["service"]
+                    if role not in role_dict:
+                        role_dict[role] = set()
+                    role_dict[role].add(person_name)
+
+        # Zweispaltige Tabelle für Funktionen & Personen
+        if role_dict:
+            document.add_heading("Dienste und Personen", level=2)
+            table = document.add_table(rows=(len(role_dict) // 2) + (len(role_dict) % 2), cols=2)
+            table.style = "Table Grid"
+
+            roles = list(role_dict.items())
+            for i, (role, names) in enumerate(roles):
+                row_cells = table.rows[i // 2].cells
+                col_index = i % 2
+                paragraph = row_cells[col_index].paragraphs[0]
+                role_run = paragraph.add_run(f"{role}: ")  # Funktion fett
+                role_run.bold = True
+                paragraph.add_run(", ".join(names))  # Namen normal
+
+        # Tabelle für den Ablauf erstellen
+        document.add_heading("Ablauf", level=2)
+        table = document.add_table(rows=1, cols=4)
+        table.style = 'Table Grid'
+
+        # Spaltenbreiten setzen
+        table.columns[0].width = Cm(2)   # Erste Spalte (leer)
+        table.columns[1].width = Cm(2)   # Zweite Spalte (leer)
+        table.columns[2].width = Cm(10)  # Dritte Spalte (Programmpunkt)
+        table.columns[3].width = Cm(3)   # Vierte Spalte (Verantwortliche)
+
+        # Tabellenkopf setzen
+        header_cells = table.rows[0].cells
+        headers = ["", "", "Programmpunkt", "Verantwortlich"]
+        for i in range(4):
+            paragraph = header_cells[i].paragraphs[0]
+            run = paragraph.add_run(headers[i])
+            run.bold = True
+            run.font.size = Pt(14)  # 2 Punkt größer
+
+        # Einträge zur Tabelle hinzufügen
+        for item in agenda["items"]:
+            if excludeBeforeEvent and item["isBeforeEvent"]:
+                continue
+
+            # Neue Tabellenzeile
+            row_cells = table.add_row().cells
+            row_cells[0].text = ""  # Erste Spalte leer
+            row_cells[1].text = ""  # Zweite Spalte leer
+
+            # Dritte Spalte: Titel fett + Liedtitel direkt dahinter
+            third_paragraph = row_cells[2].paragraphs[0]
+            title_run = third_paragraph.add_run(item["title"])
+            title_run.bold = True  # Titel fett
+
+            if item["type"] == "song":
+                song_title = item["song"]["title"]
+                third_paragraph.add_run(f" – {song_title}")  # Liedtitel in gleicher Zeile
+
+            # Falls Notizen vorhanden, unterhalb hinzufügen
+            if item["note"]:
+                third_paragraph.add_run(f"\n{item['note']}")  # Notizen normal
+
+            # Vierte Spalte: Nur Namen der Verantwortlichen
+            responsible_names = [
+                responsible_item["person"]["title"]
+                for responsible_item in item["responsible"]["persons"]
+                if responsible_item["person"] is not None
+            ]
+            row_cells[3].text = ", ".join(responsible_names)
+
+            # Mindesthöhe der Zeile setzen (1 cm)
+            tr = row_cells[0]._element.getparent()  # Zugriff auf die Tabellenzeile (tr)
+            trPr = OxmlElement("w:trPr")  # Erstelle trPr-Element für Zeileneigenschaften
+            tblHeight = OxmlElement("w:trHeight")
+            tblHeight.set(ns.qn("w:val"), "500")  # 500 Twips ≈ 1 cm Mindesthöhe
+            trPr.append(tblHeight)
+            tr.insert(0, trPr)  # Füge die Höhen-Einstellung zur Tabellenzeile hinzu
 
         return document
 
