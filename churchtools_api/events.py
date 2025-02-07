@@ -559,12 +559,12 @@ class ChurchToolsApiEvents(ChurchToolsApiAbstract):
         style.font.name = 'Calibri'
         style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Calibri')
 
-        # Überschrift: Gottesdienst am [Datum]
-        event_date = datetime.strptime(agenda["meta"]["modifiedDate"], "%Y-%m-%dT%H:%M:%S%z")
-        event_date_formatted = event_date.strftime("%d.%m.%Y")
+        # Eventdatum aus dem Namen extrahieren
+        event_date = agenda["name"].split(" ")[0]  # Nimmt das Datum aus dem Namen (z.B., "09.02.2025")
 
+        # Überschrift: Gottesdienst am [Eventdatum]
         heading = document.add_paragraph()
-        run = heading.add_run(f"Gottesdienst am {event_date_formatted}")
+        run = heading.add_run(f"Gottesdienst am {event_date}")
         run.bold = True
         run.font.size = Pt(14)  # 2 Punkt größer
 
